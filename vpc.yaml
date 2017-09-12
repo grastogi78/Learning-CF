@@ -1,0 +1,1 @@
+--- # This CF template will create VPC infra (VPC, Subnets, NACL, IGW and route53 (for private hosted zone)
