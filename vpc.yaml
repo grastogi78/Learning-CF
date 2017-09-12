@@ -1,5 +1,5 @@
 # This CF template will create VPC infra (VPC, Subnets, NACL, IGW and route53 (for public and private hosted zone)
-# Version: 1.02
+# Version: 1.04
 AWSTemplateFormatVersion: "2010-09-09" #Current Template format version as of 09/12/2017
 # Below parameter section for the VPC and subnets to be created.
 # Please take care that none of them overlap with in use CIDR
@@ -66,3 +66,40 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0 #Allows InternetGateway to route traffic incoming from Public Subnet to outside world
       GatewayId: !Ref IGW
       RouteTableId: !Ref RouteTablePublic
+  RouteDefaultPrivate:
+    Type: "AWS::EC2::Route"
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+      RouteTableId: !Ref RouteTablePrivate
+  RouteTablePublic:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref VPC
+  RouteTablePrivate:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VPCId: !Ref VPCId
+  EIPNatGW:
+    DependsOn: GatewayAttach
+    Type: "AWS::EC2::EIP"
+    Properties:
+      Domain: vpc
+  NatGateway:
+    Type: "AWS::EC2::NatGateway"
+    Properties:
+      AllocationId: !GetAtt EIPNatGW.AllocationId
+      SubnetId: !Ref SubnetPublic
+  OutPuts:
+    vpcid:
+      Description: ID of the shared infra VPC
+      Value: !Ref VPC
+    natgatewayid:
+      Description: ID of the NAT Gateway
+      Value: !Ref NatGateway
+    publicroutetable:
+      Description: ID of the Public Route table
+      Value: !Ref RouteTablePublic
+    privateroutetable:
+      Description: ID of the Private Route table
+      Value: !Ref RouteTablePrivate
