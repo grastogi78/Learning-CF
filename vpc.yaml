@@ -43,26 +43,26 @@ Resources:
       AvailabilityZone: !Select [0, !GetAZs] #Availability Zone will be selected from below defined mapping
       CidrBlock: !Ref PublicCIDR # CIDR block for the subnet provided by the user
       VpcId: !Ref VPC
-  SubnetPrivate: #Creation of the Private Subnet. 
+  SubnetPrivate: #Creation of the Private Subnet.
     Type: "AWS::EC2:Subnet"
     Properties:
       AvailabilityZone: !Select [0, !GetAZs]
       CidrBlock: !Ref PrivateCIDR
       VpcId: !Ref VPC
-  SubnetRouteTableAssociatePublic:
+  SubnetRouteTableAssociatePublic: #Subnet association to route table
     Type: "AWS::EC2::SubnetRouteTableAssociation"
     Properties:
-      RouteTableId: !Ref RouteTablePublic
-      SubnetId: !Ref SubnetPublic
+      RouteTableId: !Ref RouteTablePublic #Defined below
+      SubnetId: !Ref SubnetPublic #Defined above as SubnetPublic
   SubnetRouteTableAssociatePrivate:
     Type: "AWS::EC2::SubnetRouteTableAssociation"
     Properties:
       RouteTableId: !Ref RouteTablePrivate
-      SubnetId: ! Ref SubnetPrivate
+      SubnetId: ! Ref SubnetPrivate #Defined above as SubnetPrivate
   RouteDefaultPublic:
     Type: "AWS::EC2::Route"
-    DependsOn: GatewayAttach
+    DependsOn: GatewayAttach #This action allow for IGW to be first attached to VPC before creating the public route
     Properties:
-      DestinationCidrBlock: 0.0.0.0/0
+      DestinationCidrBlock: 0.0.0.0/0 #Allows InternetGateway to route traffic incoming from Public Subnet to outside world
       GatewayId: !Ref IGW
       RouteTableId: !Ref RouteTablePublic
