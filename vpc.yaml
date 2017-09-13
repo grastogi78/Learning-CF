@@ -207,7 +207,7 @@ Resources:
       PortRange: 1024-65535
       Protocol: 17
       RuleAction: allow
-      RuleNumber: 160
+      RuleNumber: 150
   OutPuts:
     vpcid:
       Description: ID of the shared infra VPC
