@@ -32,6 +32,10 @@ Resources:
       CidrBlock: !Ref VPCCidr #Reference Function called to take input from data defined by user
   IGW: #This is the logical ID of the InternetGateway resource. This resource will allow all public facing resources access to Internet.
     Type: "AWS:EC2::InternetGateway"
+    Properties:
+      Tags: #Check if this will work*****
+        Key: Name
+        Value: InternetGateway
   GatewayAttach: # Action to attach the InternetGateway to the VPC
     Type: "AWS::EC2::VPCGatewayAttachement"
     Properties:
@@ -86,6 +90,7 @@ Resources:
     Properties:
       Domain: vpc
   NatGateway:
+    DependsOn: GatewayAttach
     Type: "AWS::EC2::NatGateway"
     Properties:
       AllocationId: !GetAtt EIPNatGW.AllocationId
