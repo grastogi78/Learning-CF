@@ -1,5 +1,5 @@
 # This CF template will create VPC infra (VPC, Subnets, NACL, IGW and route53 (for public and private hosted zone)
-# Version: 1.05
+# Version: 1.06
 AWSTemplateFormatVersion: "2010-09-09" #Current Template format version as of 09/12/2017
 # Below parameter section for the VPC and subnets to be created.
 # Please take care that none of them overlap with in use CIDR
