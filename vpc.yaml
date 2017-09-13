@@ -44,13 +44,13 @@ Resources:
   SubnetPublic: #Creation of the Public Subnet.
     Type: "AWS::EC2::Subnet"
     Properties:
-      AvailabilityZone: !Select [0, !GetAZs] #Availability Zone will be selected from below defined mapping
+      AvailabilityZone: !Select [0, !GetAZs] #Availability Zone selected from available zones using GetAZs function
       CidrBlock: !Ref PublicCIDR # CIDR block for the subnet provided by the user
       VpcId: !Ref VPC
   SubnetPrivate: #Creation of the Private Subnet.
     Type: "AWS::EC2:Subnet"
     Properties:
-      AvailabilityZone: !Select [0, !GetAZs]
+      AvailabilityZone: !Select [1, !GetAZs]
       CidrBlock: !Ref PrivateCIDR
       VpcId: !Ref VPC
   SubnetRouteTableAssociatePublic: #Subnet association to route table
@@ -95,6 +95,119 @@ Resources:
     Properties:
       AllocationId: !GetAtt EIPNatGW.AllocationId
       SubnetId: !Ref SubnetPublic
+  PublicNACL:
+    Type: "AWS::EC2::NetworkAcl"
+    Properties:
+      Tags:
+        - Key: expiration-date
+        value: 2017-09-25
+      VpcId: !Ref VPC
+  PrivateNACL:
+    Type: "AWS::EC2::NetworkAcl"
+    Properties:
+      Tasgs:
+        - Key: expiration-date
+        value: 2017-09-25
+  PublicNACLSubnetAssociation:
+    Type: "AWS::EC2::SubnetNetworkAclAssociation"
+    Properties:
+      SubnetID: !Ref SubnetPublic
+      NetworkAclId: !Ref PublicNACL
+  PrivateNACLSubnetAssociation:
+    Type: "AWS::EC2::SubnetNetowkrAclAssociation"
+    Properties:
+      SubnetId: !Ref SubnetPrivate
+      NetworkAclId: !Ref PrivateSubnet
+  InPubNetworkACL1:
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      Egress: false
+      NetworkAclId: !Ref PublicNACL
+      PortRange: 80
+      Protocol: 6
+      RuleAction: allow
+      RuleNumber: 110
+  InPubNetworkACL2:
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      Egress: false
+      NetworkAclId: !Ref PublicNACL
+      PortRange: 443
+      Protocol: 6
+      RuleAction: allow
+      RuleNumber: 120
+  InPubNetworkACL3:
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      Egress: false
+      NetworkAclId: !Ref PublicNACL
+      PortRange: 943
+      Protocol: 6
+      RuleAction: allow
+      RuleNumber: 130
+  InPubNetworkACL4:
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      Egress: false
+      NetworkAclId: !Ref PublicNACL
+      PortRange: 1194
+      Protocol: 17
+      RuleAction: allow
+      RuleNumber: 140
+  OutPubNetworkACL1:
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      Egress: true
+      NetworkAclId: !Ref PublicNACL
+      PortRange: 80
+      Protocol: 6
+      RuleAction: allow
+      RuleNumber: 110
+  OutPubNetworkACL2:
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      Egress: true
+      NetworkAclId: !Ref PublicNACL
+      PortRange: 443
+      Protocol: 6
+      RuleAction: allow
+      RuleNumber: 120
+  OutPubNetworkACL3:
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      Egress: true
+      NetworkAclId: !Ref PublicNACL
+      PortRange: 943
+      Protocol: 6
+      RuleAction: allow
+      RuleNumber: 130
+  OutPubNetworkACL4:
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      Egress: true
+      NetworkAclId: !Ref PublicNACL
+      PortRange: 1194
+      Protocol: 17
+      RuleAction: allow
+      RuleNumber: 140
+  OutPubNetworkACL6:
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      Egress: true
+      NetworkAclId: !Ref PublicNACL
+      PortRange: 1024-65535
+      Protocol: 17
+      RuleAction: allow
+      RuleNumber: 160  
   OutPuts:
     vpcid:
       Description: ID of the shared infra VPC
