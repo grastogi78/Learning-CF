@@ -1,5 +1,5 @@
 # This CF template will create VPC infra (VPC, Subnets, NACL, IGW and route53 (for public and private hosted zone)
-# Version: 1.07
+# Version: 1.10
 AWSTemplateFormatVersion: "2010-09-09" #Current Template format version as of 09/12/2017
 # Below parameter section for the VPC and subnets to be created.
 # Please take care that none of them overlap with in use CIDR
@@ -25,6 +25,16 @@ Parameters:
     AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
     ConstraintDescription: Must be a valid CIDR range in the form x.x.x.x/22. It must not overlap with any CIDR currently in use.
     Default: 10.21.5.0/24 # Provides 256 hosts 10.21.5.0 - 10.21.5.255 . This line may be removed.
+  UATApprovalEmail:
+    Type: String
+    Description: Email address to which UAT approval should be sent
+    AllowedPattern: "([a-zA-Z0-9_\\-\\.]+)@((\\[[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.)|(([a-zA-Z0-9\\-]+\\.)+))([a-zA-Z]{2,4}|[0-9]{1,3})(\\]?)"
+    ConstraintDescription: Must be a valid email address. (e.g. name@example.com)
+  ProdApprovalEmail:
+    Type: String
+    Description: Email address to which Prod approval should be sent
+    AllowedPattern: "([a-zA-Z0-9_\\-\\.]+)@((\\[[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.)|(([a-zA-Z0-9\\-]+\\.)+))([a-zA-Z]{2,4}|[0-9]{1,3})(\\]?)"
+    ConstraintDescription: Must be a valid email address. (e.g. name@example.com)
 Resources:
   VPC: #This is the logical ID of the VPC resource
     Type: "AWS::EC2::VPC"
@@ -38,50 +48,64 @@ Resources:
         Value: InternetGateway
   GatewayAttach: # Action to attach the InternetGateway to the VPC
     Type: "AWS::EC2::VPCGatewayAttachement"
+    DependsOn:
+      - IGW
+      - VPC
     Properties:
       InternetGatewayId: !Ref IGW # Reference function that calls the logical Id of the IGW created above
       VpcId: !Ref VPC # Reference function that calls the logical Id of the VPC created
   SubnetPublic: #Creation of the Public Subnet.
     Type: "AWS::EC2::Subnet"
+    DependsOn: VPC
     Properties:
       AvailabilityZone: !Select [0, !GetAZs] #Availability Zone selected from available zones using GetAZs function
       CidrBlock: !Ref PublicCIDR # CIDR block for the subnet provided by the user
       VpcId: !Ref VPC
   SubnetPrivate: #Creation of the Private Subnet.
     Type: "AWS::EC2:Subnet"
+    DependsOn: VPC
     Properties:
       AvailabilityZone: !Select [1, !GetAZs]
       CidrBlock: !Ref PrivateCIDR
       VpcId: !Ref VPC
   SubnetRouteTableAssociatePublic: #Subnet association to route table
     Type: "AWS::EC2::SubnetRouteTableAssociation"
+    DependsOn: SubnetPublic
     Properties:
       RouteTableId: !Ref RouteTablePublic #Defined below
       SubnetId: !Ref SubnetPublic #Defined above as SubnetPublic
   SubnetRouteTableAssociatePrivate:
     Type: "AWS::EC2::SubnetRouteTableAssociation"
+    DependsOn: SubnetPrivate
     Properties:
       RouteTableId: !Ref RouteTablePrivate
       SubnetId: ! Ref SubnetPrivate #Defined above as SubnetPrivate
   RouteDefaultPublic:
     Type: "AWS::EC2::Route"
-    DependsOn: GatewayAttach #This action allow for IGW to be first attached to VPC before creating the public route
+    DependsOn:
+      - RouteTablePublic
+      - GatewayAttach #This action allow for IGW to be first attached to VPC before creating the public route
     Properties:
       DestinationCidrBlock: 0.0.0.0/0 #Allows InternetGateway to route traffic incoming from Public Subnet to outside world
       GatewayId: !Ref IGW
       RouteTableId: !Ref RouteTablePublic
   RouteDefaultPrivate:
     Type: "AWS::EC2::Route"
+    DependsOn:
+      - RouteTablePrivate
+      - NatGateway
     Properties:
       DestinationCidrBlock: 0.0.0.0/0
       NatGatewayId: !Ref NatGateway
       RouteTableId: !Ref RouteTablePrivate
   RouteTablePublic:
     Type: "AWS::EC2::RouteTable"
+    DependsOn: VPC
     Properties:
       VpcId: !Ref VPC
   RouteTablePrivate:
     Type: "AWS::EC2::RouteTable"
+    DependsOn: VPC
     Properties:
       VPCId: !Ref VPCId
   EIPNatGW:
@@ -93,121 +117,254 @@ Resources:
     DependsOn: GatewayAttach
     Type: "AWS::EC2::NatGateway"
     Properties:
-      AllocationId: !GetAtt EIPNatGW.AllocationId
+      AllocationId: !GetAtt EIPNatGW.AllocationId #Attaches the EIP to the NatGateway
       SubnetId: !Ref SubnetPublic
   PublicNACL:
     Type: "AWS::EC2::NetworkAcl"
+    DependsOn:
+      - VPC
+      - PublicSubnet
     Properties:
       Tags:
         - Key: expiration-date
-        value: 2017-09-25
+          value: "2017-09-25"
       VpcId: !Ref VPC
   PrivateNACL:
     Type: "AWS::EC2::NetworkAcl"
+    DependsOn:
+      - VPC
+      - PrivateSubnet
     Properties:
       Tasgs:
         - Key: expiration-date
-        value: 2017-09-25
+          value: "2017-09-25"
   PublicNACLSubnetAssociation:
     Type: "AWS::EC2::SubnetNetworkAclAssociation"
+    DependsOn: PublicNACL
     Properties:
       SubnetID: !Ref SubnetPublic
       NetworkAclId: !Ref PublicNACL
   PrivateNACLSubnetAssociation:
     Type: "AWS::EC2::SubnetNetowkrAclAssociation"
+    DependsOn: PrivateNACL
     Properties:
       SubnetId: !Ref SubnetPrivate
-      NetworkAclId: !Ref PrivateSubnet
-  InPubNetworkACL1:
+      NetworkAclId: !Ref PrivateNACL
+  InPubNetworkACL1: #Incomplete work add the deny all rule at the end****************
     Type: "AWS::EC2::NetworkAclEntry"
+    DependsOn: PublicNACLSubnetAssociation
     Properties:
       CidrBlock: 0.0.0.0/0
-      Egress: false
+      Egress: "false"
       NetworkAclId: !Ref PublicNACL
-      PortRange: 80
-      Protocol: 6
+      PortRange: '80'
+      Protocol: "6"
       RuleAction: allow
-      RuleNumber: 110
+      RuleNumber: '100'
   InPubNetworkACL2:
     Type: "AWS::EC2::NetworkAclEntry"
+    DependsOn: PublicNACLSubnetAssociation
     Properties:
       CidrBlock: 0.0.0.0/0
-      Egress: false
+      Egress: "false"
       NetworkAclId: !Ref PublicNACL
-      PortRange: 443
-      Protocol: 6
+      PortRange: '80'
+      Protocol: "6"
       RuleAction: allow
-      RuleNumber: 120
+      RuleNumber: '120'
   InPubNetworkACL3:
     Type: "AWS::EC2::NetworkAclEntry"
+    DependsOn: PublicNACLSubnetAssociation
     Properties:
       CidrBlock: 0.0.0.0/0
-      Egress: false
+      Egress: "false"
       NetworkAclId: !Ref PublicNACL
-      PortRange: 943
-      Protocol: 6
+      PortRange: '443'
+      Protocol: "6"
       RuleAction: allow
-      RuleNumber: 130
+      RuleNumber: '130'
   InPubNetworkACL4:
     Type: "AWS::EC2::NetworkAclEntry"
+    DependsOn: PublicNACLSubnetAssociation
     Properties:
       CidrBlock: 0.0.0.0/0
-      Egress: false
+      Egress: "false"
       NetworkAclId: !Ref PublicNACL
-      PortRange: 1194
-      Protocol: 17
+      PortRange: '943'
+      Protocol: "6"
       RuleAction: allow
-      RuleNumber: 140
+      RuleNumber: '140'
+  InPubNetworkACL5:
+    Type: "AWS::EC2::NetworkAclEntry"
+    DependsOn: PublicNACLSubnetAssociation
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      Egress: "false"
+      NetworkAclId: !Ref PublicNACL
+      PortRange: '1194'
+      Protocol: "17"
+      RuleAction: allow
+      RuleNumber: '150'
   OutPubNetworkACL1:
     Type: "AWS::EC2::NetworkAclEntry"
+    DependsOn: PublicNACLSubnetAssociation
     Properties:
       CidrBlock: 0.0.0.0/0
-      Egress: true
+      Egress: "true"
       NetworkAclId: !Ref PublicNACL
-      PortRange: 80
-      Protocol: 6
+      PortRange: '80'
+      Protocol: "6"
       RuleAction: allow
-      RuleNumber: 110
+      RuleNumber: '110'
   OutPubNetworkACL2:
     Type: "AWS::EC2::NetworkAclEntry"
+    DependsOn: PublicNACLSubnetAssociation
     Properties:
       CidrBlock: 0.0.0.0/0
-      Egress: true
+      Egress: "true"
       NetworkAclId: !Ref PublicNACL
-      PortRange: 443
-      Protocol: 6
+      PortRange: '443'
+      Protocol: "6"
       RuleAction: allow
-      RuleNumber: 120
+      RuleNumber: '120'
   OutPubNetworkACL3:
     Type: "AWS::EC2::NetworkAclEntry"
+    DependsOn: PublicNACLSubnetAssociation
     Properties:
       CidrBlock: 0.0.0.0/0
-      Egress: true
+      Egress: "true"
       NetworkAclId: !Ref PublicNACL
-      PortRange: 943
-      Protocol: 6
+      PortRange: '943'
+      Protocol: "6"
       RuleAction: allow
-      RuleNumber: 130
+      RuleNumber: '130'
   OutPubNetworkACL4:
     Type: "AWS::EC2::NetworkAclEntry"
+    DependsOn: PublicNACLSubnetAssociation
     Properties:
       CidrBlock: 0.0.0.0/0
-      Egress: true
+      Egress: "true"
       NetworkAclId: !Ref PublicNACL
-      PortRange: 1194
-      Protocol: 17
+      PortRange: '1194'
+      Protocol: "17"
       RuleAction: allow
-      RuleNumber: 140
+      RuleNumber: '140'
+  OutPubNetworkACL5:
+    Type: "AWS::EC2::NetworkAclEntry"
+    DependsOn: PublicNACLSubnetAssociation
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      Egress: "true"
+      NetworkAclId: !Ref PublicNACL
+      PortRange:
+        From: '1024'
+        To: '65535'
+      Protocol: "17"
+      RuleAction: allow
+      RuleNumber: '150'
   OutPubNetworkACL6:
     Type: "AWS::EC2::NetworkAclEntry"
+    DependsOn: PublicNACLSubnetAssociation
+    Properties:
+      CidrBlock: !Ref PrivateCIDR
+      Egress: "true"
+      NetworkAclId: !Ref PublicNACL
+      PortRange: '3306'
+      Protocol: "6"
+      RuleAction: allow
+      RuleNumber: '160'
+  OutPubNetworkACL7:
+    Type: "AWS::EC2::NetworkAclEntry"
+    DependsOn: PublicNACLSubnetAssociation
+    Properties:
+      CidrBlock: !Ref PrivateCIDR
+      Egress: "true"
+      NetworkAclId: !Ref PublicNACL
+      PortRange: '22'
+      Protocol: "6"
+      RuleAction: allow
+      RuleNumber: '170'
+  InPrivateNetworkACL1:
+    Type: "AWS::EC2::NetworkAclEntry"
+    DependsOn: PrivateNACLSubnetAssociation
+    Properties:
+      CidrBlock: !Ref PublicCIDR
+      Egress: "false"
+      NetworkAclId: !Ref PrivateNACL
+      PortRange: '3306'
+      Protocol: "6"
+      RuleAction: allow
+      RuleNumber: '110'
+  InPrivateNetworkACL2:
+    Type: "AWS::EC2::NetworkAclEntry"
+    DependsOn: PrivateNACLSubnetAssociation
+    Properties:
+      CidrBlock: !Ref PublicCIDR
+      Egress: "false"
+      NetworkAclId: !Ref PrivateNACL
+      PortRange: '22' #Allows ssh in from Public facing Servers
+      Protocol: "6"
+      RuleAction: allow
+      RuleNumber: '120'
+  InPrivateNetworkACL3:
+    Type: "AWS::EC2::NetworkAclEntry"
+    DependsOn: PrivateNACLSubnetAssociation
+    Properties:
+      CidrBlock: !Ref PublicCIDR
+      Egress: "false"
+      NetworkAclId: !Ref PrivateNACL
+      PortRange: '3389' #Allows RDP into from public facing servers
+      Protocol: "6"
+      RuleAction: allow
+      RuleNumber: '130'
+  InPrivateNetworkACL4:
+    Type: "AWS::EC2::NetworkAclEntry"
+    DependsOn: PrivateNACLSubnetAssociation
     Properties:
       CidrBlock: 0.0.0.0/0
-      Egress: true
-      NetworkAclId: !Ref PublicNACL
-      PortRange: 1024-65535
-      Protocol: 17
+      Egress: "false"
+      NetworkAclId: !Ref PrivateNACL
+      PortRange:
+        From: '1024'
+        To: '65535' #Allows inbound return traffic from the NAT device in the public subnet for requests originating in the private subnet
+      Protocol: "6"
       RuleAction: allow
-      RuleNumber: 150
+      RuleNumber: '140'
+  InPrivateNetworkACL5:
+    Type: "AWS::EC2::NetworkAclEntry"
+    DependsOn: PrivateNACLSubnetAssociation
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      Egress: "false"
+      NetworkAclId: !Ref PrivateNACL
+      PortRange: '80'
+      Protocol: "6"
+      RuleAction: allow
+      RuleNumber: '150'
+  InPrivateNetworkACL6:
+    Type: "AWS::EC2::NetworkAclEntry"
+    DependsOn: PrivateNACLSubnetAssociation
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      Egress: "false"
+      NetworkAclId: !Ref PrivateNACL
+      PortRange: '443'
+      Protocol: "6"
+      RuleAction: allow
+      RuleNumber: '160'
+  OutPrivateNetworkACL1:
+    Type: "AWS::EC2::NetworkAclEntry"
+    DependsOn: PrivateNACLSubnetAssociation
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      Egress: "false"
+      NetworkAclId: !Ref PrivateNACL
+      PortRange:
+        From: '1024'
+        To: '65535'
+      Protocol: "6"
+      RuleAction: allow
+      RuleNumber: '140'
   OutPuts:
     vpcid:
       Description: ID of the shared infra VPC
